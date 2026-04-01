@@ -35,6 +35,10 @@ const VEHICLE_INFO: Record<string, { emoji: string; label: string }> = {
   plane: { emoji: "✈️", label: "Plane" },
   ship: { emoji: "🚢", label: "Ship" },
   battle: { emoji: "⚔️", label: "Battle" },
+  submarine: { emoji: "🚤", label: "Submarine" },
+  speedboat: { emoji: "🛥️", label: "Speedboat" },
+  warship: { emoji: "🚢", label: "Warship" },
+  yacht: { emoji: "⛵", label: "Yacht" },
 };
 
 function StatBar({
@@ -100,6 +104,20 @@ export default function LandingPage({
           >
             ⚡ BrawlVerse
           </span>
+          {isAdmin && (
+            <span
+              className="text-xs font-black px-3 py-1 rounded-full"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(255,215,0,0.2), rgba(255,154,46,0.15))",
+                border: "1px solid #FFD700",
+                color: "#FFD700",
+                boxShadow: "0 0 12px rgba(255,215,0,0.3)",
+              }}
+            >
+              👑 OWNER MODE
+            </span>
+          )}
         </div>
         <div
           className="hidden md:flex items-center gap-6 text-sm font-medium"

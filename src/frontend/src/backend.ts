@@ -89,19 +89,30 @@ export class ExternalBlob {
         return this;
     }
 }
-export interface GameMap {
-    theme: string;
-    name: string;
-}
-export interface MatchResult {
-    vehicleUsed: string;
-    mapUsed: string;
-    characterUsed: string;
-    winner: Principal;
-    loser: Principal;
-    timestamp: Time;
-}
 export type Time = bigint;
+export interface PlayerSession {
+    status: Variant_alive_dead;
+    vehicleName: string;
+    principal: Principal;
+    displayName: string;
+    characterName: string;
+    coins: bigint;
+    score: bigint;
+    isReady: boolean;
+    positionX: bigint;
+    positionY: bigint;
+    gunSkinName: string;
+    health: bigint;
+}
+export interface Room {
+    id: bigint;
+    status: RoomStatus;
+    selectedMap: string;
+    code: string;
+    createdAt: Time;
+    players: Array<RoomPlayer>;
+    hostPrincipal: Principal;
+}
 export interface Character {
     name: string;
     description: string;
@@ -116,20 +127,60 @@ export interface Vehicle {
     name: string;
     speed: bigint;
 }
-export interface UserProfile {
+export interface GameMap {
+    theme: string;
     name: string;
-    favoriteVehicle: string;
-    favoriteCharacter: string;
+}
+export interface MatchResult {
+    vehicleUsed: string;
+    mapUsed: string;
+    characterUsed: string;
+    winner: Principal;
+    loser: Principal;
+    timestamp: Time;
+}
+export interface GodModeFlags {
+    flyMode: boolean;
+    extraCoins: bigint;
+    invincibility: boolean;
+}
+export interface RoomPlayer {
+    vehicleName: string;
+    principal: Principal;
+    displayName: string;
+    characterName: string;
+    isReady: boolean;
+    gunSkinName: string;
+}
+export interface ChatMessage {
+    displayName: string;
+    senderPrincipal: Principal;
+    message: string;
+    timestamp: Time;
 }
 export interface GunSkin {
     name: string;
     description: string;
     rarity: bigint;
 }
+export interface UserProfile {
+    name: string;
+    favoriteVehicle: string;
+    favoriteCharacter: string;
+}
+export enum RoomStatus {
+    playing = "playing",
+    finished = "finished",
+    waiting = "waiting"
+}
 export enum UserRole {
     admin = "admin",
     user = "user",
     guest = "guest"
+}
+export enum Variant_alive_dead {
+    alive = "alive",
+    dead = "dead"
 }
 export enum VehicleType {
     car = "car",
@@ -147,10 +198,14 @@ export interface backendInterface {
     addGunSkin(gunSkin: GunSkin): Promise<bigint>;
     addVehicle(vehicle: Vehicle): Promise<bigint>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    banPlayer(player: Principal): Promise<void>;
+    checkIfBanned(player: Principal): Promise<boolean>;
+    createRoom(displayName: string): Promise<string>;
     deleteCharacter(id: bigint): Promise<void>;
     deleteGameMap(id: bigint): Promise<void>;
     deleteGunSkin(id: bigint): Promise<void>;
     deleteVehicle(id: bigint): Promise<void>;
+    endMatch(code: string): Promise<void>;
     getAllCharacters(): Promise<Array<Character>>;
     getAllGunSkins(): Promise<Array<GunSkin>>;
     getAllMaps(): Promise<Array<GameMap>>;
@@ -158,17 +213,34 @@ export interface backendInterface {
     getAllVehicles(): Promise<Array<Vehicle>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
+    getGodMode(player: Principal): Promise<GodModeFlags | null>;
+    getPlayerSession(player: Principal): Promise<PlayerSession | null>;
+    getRoomByCode(code: string): Promise<Room | null>;
+    getRoomMessages(code: string): Promise<Array<ChatMessage>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
+    joinRandomRoom(displayName: string): Promise<string>;
+    joinRoom(code: string, displayName: string): Promise<Room>;
+    leaveRoom(code: string): Promise<void>;
+    listBannedPlayers(): Promise<Array<Principal>>;
+    listOpenRooms(): Promise<Array<Room>>;
+    removeGodMode(player: Principal): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     seedInitialData(): Promise<void>;
+    sendChatMessage(code: string, displayName: string, message: string): Promise<void>;
+    setGodMode(player: Principal, flags: GodModeFlags): Promise<void>;
+    setPlayerReady(code: string, characterName: string, vehicleName: string, gunSkinName: string): Promise<void>;
+    setRoomMap(code: string, mapName: string): Promise<void>;
+    startMatch(code: string): Promise<void>;
     submitMatchResult(loser: Principal, mapUsed: string, characterUsed: string, vehicleUsed: string): Promise<bigint>;
+    unbanPlayer(player: Principal): Promise<void>;
     updateCharacter(id: bigint, character: Character): Promise<void>;
     updateGameMap(id: bigint, gameMap: GameMap): Promise<void>;
     updateGunSkin(id: bigint, gunSkin: GunSkin): Promise<void>;
+    updatePlayerSession(session: PlayerSession): Promise<void>;
     updateVehicle(id: bigint, vehicle: Vehicle): Promise<void>;
 }
-import type { UserProfile as _UserProfile, UserRole as _UserRole, Vehicle as _Vehicle, VehicleType as _VehicleType } from "./declarations/backend.did.d.ts";
+import type { GodModeFlags as _GodModeFlags, PlayerSession as _PlayerSession, Room as _Room, RoomPlayer as _RoomPlayer, RoomStatus as _RoomStatus, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole, Vehicle as _Vehicle, VehicleType as _VehicleType } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
@@ -255,6 +327,48 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async banPlayer(arg0: Principal): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.banPlayer(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.banPlayer(arg0);
+            return result;
+        }
+    }
+    async checkIfBanned(arg0: Principal): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.checkIfBanned(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.checkIfBanned(arg0);
+            return result;
+        }
+    }
+    async createRoom(arg0: string): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.createRoom(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.createRoom(arg0);
+            return result;
+        }
+    }
     async deleteCharacter(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -308,6 +422,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.deleteVehicle(arg0);
+            return result;
+        }
+    }
+    async endMatch(arg0: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.endMatch(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.endMatch(arg0);
             return result;
         }
     }
@@ -409,6 +537,62 @@ export class Backend implements backendInterface {
             return from_candid_UserRole_n13(this._uploadFile, this._downloadFile, result);
         }
     }
+    async getGodMode(arg0: Principal): Promise<GodModeFlags | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getGodMode(arg0);
+                return from_candid_opt_n15(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getGodMode(arg0);
+            return from_candid_opt_n15(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getPlayerSession(arg0: Principal): Promise<PlayerSession | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getPlayerSession(arg0);
+                return from_candid_opt_n16(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getPlayerSession(arg0);
+            return from_candid_opt_n16(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getRoomByCode(arg0: string): Promise<Room | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getRoomByCode(arg0);
+                return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getRoomByCode(arg0);
+            return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getRoomMessages(arg0: string): Promise<Array<ChatMessage>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getRoomMessages(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getRoomMessages(arg0);
+            return result;
+        }
+    }
     async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
         if (this.processError) {
             try {
@@ -434,6 +618,90 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.isCallerAdmin();
+            return result;
+        }
+    }
+    async joinRandomRoom(arg0: string): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.joinRandomRoom(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.joinRandomRoom(arg0);
+            return result;
+        }
+    }
+    async joinRoom(arg0: string, arg1: string): Promise<Room> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.joinRoom(arg0, arg1);
+                return from_candid_Room_n21(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.joinRoom(arg0, arg1);
+            return from_candid_Room_n21(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async leaveRoom(arg0: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.leaveRoom(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.leaveRoom(arg0);
+            return result;
+        }
+    }
+    async listBannedPlayers(): Promise<Array<Principal>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.listBannedPlayers();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.listBannedPlayers();
+            return result;
+        }
+    }
+    async listOpenRooms(): Promise<Array<Room>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.listOpenRooms();
+                return from_candid_vec_n25(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.listOpenRooms();
+            return from_candid_vec_n25(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async removeGodMode(arg0: Principal): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.removeGodMode(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.removeGodMode(arg0);
             return result;
         }
     }
@@ -465,6 +733,76 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async sendChatMessage(arg0: string, arg1: string, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.sendChatMessage(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.sendChatMessage(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async setGodMode(arg0: Principal, arg1: GodModeFlags): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setGodMode(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setGodMode(arg0, arg1);
+            return result;
+        }
+    }
+    async setPlayerReady(arg0: string, arg1: string, arg2: string, arg3: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setPlayerReady(arg0, arg1, arg2, arg3);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setPlayerReady(arg0, arg1, arg2, arg3);
+            return result;
+        }
+    }
+    async setRoomMap(arg0: string, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setRoomMap(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setRoomMap(arg0, arg1);
+            return result;
+        }
+    }
+    async startMatch(arg0: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.startMatch(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.startMatch(arg0);
+            return result;
+        }
+    }
     async submitMatchResult(arg0: Principal, arg1: string, arg2: string, arg3: string): Promise<bigint> {
         if (this.processError) {
             try {
@@ -476,6 +814,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.submitMatchResult(arg0, arg1, arg2, arg3);
+            return result;
+        }
+    }
+    async unbanPlayer(arg0: Principal): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.unbanPlayer(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.unbanPlayer(arg0);
             return result;
         }
     }
@@ -521,6 +873,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async updatePlayerSession(arg0: PlayerSession): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updatePlayerSession(to_candid_PlayerSession_n26(this._uploadFile, this._downloadFile, arg0));
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updatePlayerSession(to_candid_PlayerSession_n26(this._uploadFile, this._downloadFile, arg0));
+            return result;
+        }
+    }
     async updateVehicle(arg0: bigint, arg1: Vehicle): Promise<void> {
         if (this.processError) {
             try {
@@ -536,6 +902,15 @@ export class Backend implements backendInterface {
         }
     }
 }
+function from_candid_PlayerSession_n17(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PlayerSession): PlayerSession {
+    return from_candid_record_n18(_uploadFile, _downloadFile, value);
+}
+function from_candid_RoomStatus_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _RoomStatus): RoomStatus {
+    return from_candid_variant_n24(_uploadFile, _downloadFile, value);
+}
+function from_candid_Room_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Room): Room {
+    return from_candid_record_n22(_uploadFile, _downloadFile, value);
+}
 function from_candid_UserRole_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
     return from_candid_variant_n14(_uploadFile, _downloadFile, value);
 }
@@ -547,6 +922,88 @@ function from_candid_Vehicle_n8(_uploadFile: (file: ExternalBlob) => Promise<Uin
 }
 function from_candid_opt_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_GodModeFlags]): GodModeFlags | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_PlayerSession]): PlayerSession | null {
+    return value.length === 0 ? null : from_candid_PlayerSession_n17(_uploadFile, _downloadFile, value[0]);
+}
+function from_candid_opt_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_Room]): Room | null {
+    return value.length === 0 ? null : from_candid_Room_n21(_uploadFile, _downloadFile, value[0]);
+}
+function from_candid_record_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    status: {
+        alive: null;
+    } | {
+        dead: null;
+    };
+    vehicleName: string;
+    principal: Principal;
+    displayName: string;
+    characterName: string;
+    coins: bigint;
+    score: bigint;
+    isReady: boolean;
+    positionX: bigint;
+    positionY: bigint;
+    gunSkinName: string;
+    health: bigint;
+}): {
+    status: Variant_alive_dead;
+    vehicleName: string;
+    principal: Principal;
+    displayName: string;
+    characterName: string;
+    coins: bigint;
+    score: bigint;
+    isReady: boolean;
+    positionX: bigint;
+    positionY: bigint;
+    gunSkinName: string;
+    health: bigint;
+} {
+    return {
+        status: from_candid_variant_n19(_uploadFile, _downloadFile, value.status),
+        vehicleName: value.vehicleName,
+        principal: value.principal,
+        displayName: value.displayName,
+        characterName: value.characterName,
+        coins: value.coins,
+        score: value.score,
+        isReady: value.isReady,
+        positionX: value.positionX,
+        positionY: value.positionY,
+        gunSkinName: value.gunSkinName,
+        health: value.health
+    };
+}
+function from_candid_record_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    id: bigint;
+    status: _RoomStatus;
+    selectedMap: string;
+    code: string;
+    createdAt: _Time;
+    players: Array<_RoomPlayer>;
+    hostPrincipal: Principal;
+}): {
+    id: bigint;
+    status: RoomStatus;
+    selectedMap: string;
+    code: string;
+    createdAt: Time;
+    players: Array<RoomPlayer>;
+    hostPrincipal: Principal;
+} {
+    return {
+        id: value.id,
+        status: from_candid_RoomStatus_n23(_uploadFile, _downloadFile, value.status),
+        selectedMap: value.selectedMap,
+        code: value.code,
+        createdAt: value.createdAt,
+        players: value.players,
+        hostPrincipal: value.hostPrincipal
+    };
 }
 function from_candid_record_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     vehicleType: _VehicleType;
@@ -595,8 +1052,30 @@ function from_candid_variant_n14(_uploadFile: (file: ExternalBlob) => Promise<Ui
 }): UserRole {
     return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
 }
+function from_candid_variant_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    alive: null;
+} | {
+    dead: null;
+}): Variant_alive_dead {
+    return "alive" in value ? Variant_alive_dead.alive : "dead" in value ? Variant_alive_dead.dead : value;
+}
+function from_candid_variant_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    playing: null;
+} | {
+    finished: null;
+} | {
+    waiting: null;
+}): RoomStatus {
+    return "playing" in value ? RoomStatus.playing : "finished" in value ? RoomStatus.finished : "waiting" in value ? RoomStatus.waiting : value;
+}
+function from_candid_vec_n25(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Room>): Array<Room> {
+    return value.map((x)=>from_candid_Room_n21(_uploadFile, _downloadFile, x));
+}
 function from_candid_vec_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Vehicle>): Array<Vehicle> {
     return value.map((x)=>from_candid_Vehicle_n8(_uploadFile, _downloadFile, x));
+}
+function to_candid_PlayerSession_n26(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: PlayerSession): _PlayerSession {
+    return to_candid_record_n27(_uploadFile, _downloadFile, value);
 }
 function to_candid_UserRole_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
     return to_candid_variant_n6(_uploadFile, _downloadFile, value);
@@ -627,6 +1106,63 @@ function to_candid_record_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
         name: value.name,
         speed: value.speed
     };
+}
+function to_candid_record_n27(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    status: Variant_alive_dead;
+    vehicleName: string;
+    principal: Principal;
+    displayName: string;
+    characterName: string;
+    coins: bigint;
+    score: bigint;
+    isReady: boolean;
+    positionX: bigint;
+    positionY: bigint;
+    gunSkinName: string;
+    health: bigint;
+}): {
+    status: {
+        alive: null;
+    } | {
+        dead: null;
+    };
+    vehicleName: string;
+    principal: Principal;
+    displayName: string;
+    characterName: string;
+    coins: bigint;
+    score: bigint;
+    isReady: boolean;
+    positionX: bigint;
+    positionY: bigint;
+    gunSkinName: string;
+    health: bigint;
+} {
+    return {
+        status: to_candid_variant_n28(_uploadFile, _downloadFile, value.status),
+        vehicleName: value.vehicleName,
+        principal: value.principal,
+        displayName: value.displayName,
+        characterName: value.characterName,
+        coins: value.coins,
+        score: value.score,
+        isReady: value.isReady,
+        positionX: value.positionX,
+        positionY: value.positionY,
+        gunSkinName: value.gunSkinName,
+        health: value.health
+    };
+}
+function to_candid_variant_n28(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Variant_alive_dead): {
+    alive: null;
+} | {
+    dead: null;
+} {
+    return value == Variant_alive_dead.alive ? {
+        alive: null
+    } : value == Variant_alive_dead.dead ? {
+        dead: null
+    } : value;
 }
 function to_candid_variant_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: VehicleType): {
     car: null;

@@ -1,38 +1,31 @@
 # BrawlVerse
 
 ## Current State
-- Local multiplayer fighting game (2 players, same screen)
-- 5 characters, 7 vehicles, 6 gun skins, 4 maps
-- Admin panel for managing game assets
-- Owner god mode (invincibility, fly, vehicle spawn, coins)
-- No online/network multiplayer
-- No chat
+New build -- no existing application files.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Online multiplayer lobby system with room creation and shareable room codes
-- Random matchmaking (join any open room)
-- Up to 20 players per room
-- In-room chat (messages tied to a room, displayed during lobby and match)
-- New backend data: Room, RoomPlayer, ChatMessage types
-- Backend APIs: createRoom, joinRoom, joinRandomRoom, leaveRoom, getRoomState, sendChatMessage, getRoomMessages, listOpenRooms
-- Online lobby page (create/join room, see players in room, chat, start match when ready)
-- Online game flow: host selects map, all players pick characters/loadouts, then game starts
+- Full multiplayer fighting game with local and online modes
+- Online multiplayer: room creation with shareable codes, random matchmaking, up to 20 players per room
+- In-game chat for online matches
+- Maps: Jungle, City, Castle, Space Station
+- Selectable fighter roster
+- 7 vehicle types: bike, car, van, tank, plane, ship, battle vehicle -- each with unique stats
+- 6 gun skins
+- Admin panel: CRUD for maps/settings, player ban
+- Owner god mode: invincibility (G), fly (T), vehicle spawner (V), instant +500 coins (C), cannot be killed
+- Internet Identity login for owner/admin features
+- Backend: room state management, player sessions, chat messages, match management
 
 ### Modify
-- App.tsx: add new views for online lobby ("lobby", "online-setup", "online-game")
-- LandingPage: add "Play Online" button alongside existing "Play Local" button
-- GameSetup: keep as-is for local play
+- N/A
 
 ### Remove
-- Nothing removed
+- N/A
 
 ## Implementation Plan
-1. Add Room, RoomPlayer, ChatMessage types to Motoko backend
-2. Implement room CRUD, join/leave, matchmaking, chat message APIs in backend
-3. Regenerate frontend bindings (backend.d.ts)
-4. Add OnlineLobby page: create room (get code), join by code, join random, show players list, chat panel
-5. Add OnlineGameSetup page: each player picks character/vehicle/gun skin before match starts
-6. Wire new views into App.tsx routing
-7. Poll backend every 2-3 seconds for room state updates (no WebSockets needed)
+1. Backend: rooms, players, chat, matchmaking, admin/owner RBAC via authorization component
+2. Frontend: main menu, character select, map select, lobby with chat, game canvas, admin panel, owner HUD
+3. Game engine: Canvas-based 2D fighting with keyboard controls, vehicle system, gun skins
+4. Online sync: polling-based room state updates for up to 20 players

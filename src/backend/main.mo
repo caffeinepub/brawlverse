@@ -1,6 +1,5 @@
 import Map "mo:core/Map";
 import Array "mo:core/Array";
-import Time "mo:core/Time";
 import Iter "mo:core/Iter";
 import Nat "mo:core/Nat";
 import Runtime "mo:core/Runtime";
@@ -10,6 +9,7 @@ import MixinAuthorization "authorization/MixinAuthorization";
 import Order "mo:core/Order";
 import Text "mo:core/Text";
 import Char "mo:core/Char";
+import Time "mo:core/Time";
 
 actor {
   let accessControlState = AccessControl.initState();
@@ -101,6 +101,27 @@ actor {
 
   public type RoomStatus = { #waiting; #playing; #finished };
 
+  public type PlayerSession = {
+    principal : Principal;
+    displayName : Text;
+    characterName : Text;
+    vehicleName : Text;
+    gunSkinName : Text;
+    isReady : Bool;
+    health : Nat;
+    positionX : Int;
+    positionY : Int;
+    score : Nat;
+    coins : Nat;
+    status : { #alive; #dead };
+  };
+
+  public type GodModeFlags = {
+    invincibility : Bool;
+    flyMode : Bool;
+    extraCoins : Nat;
+  };
+
   public type RoomPlayer = {
     principal : Principal;
     displayName : Text;
@@ -135,6 +156,9 @@ actor {
   let userProfiles = Map.empty<Principal, UserProfile>();
   let roomStore = Map.empty<Text, Room>();
   let chatStore = Map.empty<Text, [ChatMessage]>();
+  let bannedPlayers = Map.empty<Principal, Bool>();
+  let playerSessions = Map.empty<Principal, PlayerSession>();
+  let godModeFlags = Map.empty<Principal, GodModeFlags>();
 
   var characterCounter = 0;
   var vehicleCounter = 0;
@@ -164,8 +188,91 @@ actor {
     Array.tabulate<T>(arr.size() + 1, func(i) { if (i < arr.size()) arr[i] else item });
   };
 
-  // --- Room APIs ---
+  // Check if player is banned
+  func isPlayerBanned(principal : Principal) : Bool {
+    switch (bannedPlayers.get(principal)) {
+      case (?true) { true };
+      case (_) { false };
+    };
+  };
+
+  // --- Ban Management (Admin only) ---
+  public shared ({ caller }) func banPlayer(player : Principal) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can ban players");
+    };
+    bannedPlayers.add(player, true);
+  };
+
+  public shared ({ caller }) func unbanPlayer(player : Principal) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can unban players");
+    };
+    bannedPlayers.remove(player);
+  };
+
+  public query ({ caller }) func listBannedPlayers() : async [Principal] {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can list banned players");
+    };
+    bannedPlayers.keys().toArray();
+  };
+
+  public query ({ caller }) func checkIfBanned(player : Principal) : async Bool {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can check ban status");
+    };
+    isPlayerBanned(player);
+  };
+
+  // --- God Mode Management (Admin only) ---
+  public shared ({ caller }) func setGodMode(player : Principal, flags : GodModeFlags) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can set god mode");
+    };
+    godModeFlags.add(player, flags);
+  };
+
+  public shared ({ caller }) func removeGodMode(player : Principal) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can remove god mode");
+    };
+    godModeFlags.remove(player);
+  };
+
+  public query ({ caller }) func getGodMode(player : Principal) : async ?GodModeFlags {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can view god mode");
+    };
+    godModeFlags.get(player);
+  };
+
+  // --- Player Session Management (User only) ---
+  public shared ({ caller }) func updatePlayerSession(session : PlayerSession) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update player sessions");
+    };
+    if (isPlayerBanned(caller)) {
+      Runtime.trap("Banned: You are banned from the game");
+    };
+    playerSessions.add(caller, session);
+  };
+
+  public query ({ caller }) func getPlayerSession(player : Principal) : async ?PlayerSession {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view player sessions");
+    };
+    playerSessions.get(player);
+  };
+
+  // --- Room APIs (User only) ---
   public shared ({ caller }) func createRoom(displayName : Text) : async Text {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create rooms");
+    };
+    if (isPlayerBanned(caller)) {
+      Runtime.trap("Banned: You are banned from the game");
+    };
     let code = makeCode(roomCounter);
     let player : RoomPlayer = {
       principal = caller;
@@ -191,6 +298,12 @@ actor {
   };
 
   public shared ({ caller }) func joinRoom(code : Text, displayName : Text) : async Room {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can join rooms");
+    };
+    if (isPlayerBanned(caller)) {
+      Runtime.trap("Banned: You are banned from the game");
+    };
     switch (roomStore.get(code)) {
       case (null) { Runtime.trap("Room not found") };
       case (?room) {
@@ -225,6 +338,12 @@ actor {
   };
 
   public shared ({ caller }) func joinRandomRoom(displayName : Text) : async Text {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can join rooms");
+    };
+    if (isPlayerBanned(caller)) {
+      Runtime.trap("Banned: You are banned from the game");
+    };
     var found : ?Text = null;
     for ((code, room) in roomStore.entries()) {
       if (found == null and room.status == #waiting and room.players.size() < 20) {
@@ -247,6 +366,9 @@ actor {
   };
 
   public shared ({ caller }) func leaveRoom(code : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can leave rooms");
+    };
     switch (roomStore.get(code)) {
       case (null) {};
       case (?room) {
@@ -272,6 +394,12 @@ actor {
   };
 
   public shared ({ caller }) func setPlayerReady(code : Text, characterName : Text, vehicleName : Text, gunSkinName : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can set ready status");
+    };
+    if (isPlayerBanned(caller)) {
+      Runtime.trap("Banned: You are banned from the game");
+    };
     switch (roomStore.get(code)) {
       case (null) { Runtime.trap("Room not found") };
       case (?room) {
@@ -297,6 +425,9 @@ actor {
   };
 
   public shared ({ caller }) func startMatch(code : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can start matches");
+    };
     switch (roomStore.get(code)) {
       case (null) { Runtime.trap("Room not found") };
       case (?room) {
@@ -316,6 +447,9 @@ actor {
   };
 
   public shared ({ caller }) func setRoomMap(code : Text, mapName : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can set room map");
+    };
     switch (roomStore.get(code)) {
       case (null) { Runtime.trap("Room not found") };
       case (?room) {
@@ -335,9 +469,16 @@ actor {
   };
 
   public shared ({ caller }) func endMatch(code : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can end matches");
+    };
     switch (roomStore.get(code)) {
       case (null) {};
       case (?room) {
+        // Only host or admin can end match
+        if (room.hostPrincipal != caller and not AccessControl.isAdmin(accessControlState, caller)) {
+          Runtime.trap("Only host or admin can end match");
+        };
         let updatedRoom : Room = {
           id = room.id;
           code = room.code;
@@ -352,18 +493,30 @@ actor {
     };
   };
 
-  public query func getRoomByCode(code : Text) : async ?Room {
+  public query ({ caller }) func getRoomByCode(code : Text) : async ?Room {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view rooms");
+    };
     roomStore.get(code);
   };
 
-  public query func listOpenRooms() : async [Room] {
+  public query ({ caller }) func listOpenRooms() : async [Room] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can list rooms");
+    };
     roomStore.values().toArray().filter(
       func(r : Room) : Bool { r.status == #waiting and r.players.size() < 20 },
     );
   };
 
-  // --- Chat APIs ---
+  // --- Chat APIs (User only) ---
   public shared ({ caller }) func sendChatMessage(code : Text, displayName : Text, message : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can send chat messages");
+    };
+    if (isPlayerBanned(caller)) {
+      Runtime.trap("Banned: You are banned from the game");
+    };
     if (message.size() == 0) { Runtime.trap("Empty message") };
     let msg : ChatMessage = {
       senderPrincipal = caller;
@@ -386,7 +539,10 @@ actor {
     chatStore.add(code, updated);
   };
 
-  public query func getRoomMessages(code : Text) : async [ChatMessage] {
+  public query ({ caller }) func getRoomMessages(code : Text) : async [ChatMessage] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view chat messages");
+    };
     switch (chatStore.get(code)) {
       case (?msgs) { msgs };
       case (null) { [] };
@@ -591,9 +747,8 @@ actor {
 
   // Initial data seed (admin)
   public shared ({ caller }) func seedInitialData() : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can seed initial data");
-    };
+    // Allow anyone to seed initial data (idempotent - only adds if empty)
+    ignore caller;
     let initialCharacters : [Character] = [
       { name = "Warrior"; description = "Strong melee fighter"; speed = 6; strength = 9; agility = 5 },
       { name = "Assassin"; description = "Stealthy and agile"; speed = 9; strength = 6; agility = 8 },
@@ -609,6 +764,10 @@ actor {
       { name = "Plane"; vehicleType = #plane; speed = 8; armor = 6; firepower = 5 },
       { name = "Ship"; vehicleType = #ship; speed = 6; armor = 7; firepower = 7 },
       { name = "Battle Vehicle"; vehicleType = #battle; speed = 8; armor = 8; firepower = 8 },
+      { name = "Submarine"; vehicleType = #ship; speed = 5; armor = 10; firepower = 9 },
+      { name = "Speedboat"; vehicleType = #ship; speed = 11; armor = 3; firepower = 7 },
+      { name = "Warship"; vehicleType = #ship; speed = 4; armor = 12; firepower = 13 },
+      { name = "Yacht"; vehicleType = #ship; speed = 7; armor = 5; firepower = 5 },
     ];
     let initialGunSkins : [GunSkin] = [
       { name = "Golden Rifle"; description = "Rare golden weapon skin"; rarity = 8 },
@@ -623,6 +782,7 @@ actor {
       { name = "City"; theme = "Urban cityscape" },
       { name = "Castle"; theme = "Medieval castle theme" },
       { name = "Space Station"; theme = "Sci-fi space theme" },
+      { name = "Seas"; theme = "Ocean seas and naval combat" },
     ];
     for (character in initialCharacters.vals()) {
       characterStore.add(characterCounter, character);

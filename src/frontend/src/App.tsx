@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { backendInterface as ExtendedBackend, Room } from "./backend.d";
+import type { Room } from "./backend.d";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import AdminPanel from "./pages/AdminPanel";
@@ -39,15 +39,20 @@ export default function App() {
 
   useEffect(() => {
     if (!actor) return;
-    const seeded = localStorage.getItem("brawlverse_seeded");
+    // Check v2 seed key to ensure Seas map is seeded
+    const seededV2 = localStorage.getItem("brawlverse_seeded_v2");
     const tasks: Promise<unknown>[] = [actor.isCallerAdmin()];
-    if (!seeded) {
+    if (!seededV2) {
       tasks.push(actor.seedInitialData());
     }
-    Promise.all(tasks).then(([adminResult]) => {
-      setIsAdmin(adminResult as boolean);
-      if (!seeded) localStorage.setItem("brawlverse_seeded", "1");
-    });
+    Promise.all(tasks)
+      .then(([adminResult]) => {
+        setIsAdmin(adminResult as boolean);
+        if (!seededV2) localStorage.setItem("brawlverse_seeded_v2", "1");
+      })
+      .catch(() => {
+        // silent — seed failure should not break the app
+      });
   }, [actor]);
 
   const handleStart = (p1: PlayerConfig, p2: PlayerConfig, mapName: string) => {
@@ -64,10 +69,9 @@ export default function App() {
 
   const handleOnlineWin = async (winnerName: string) => {
     setWinner(winnerName);
-    const extActor = actor as ExtendedBackend | null;
-    if (extActor && currentRoom) {
+    if (actor && currentRoom) {
       try {
-        await extActor.endMatch(currentRoom.code);
+        await actor.endMatch(currentRoom.code);
       } catch {
         // silent
       }
@@ -89,7 +93,6 @@ export default function App() {
       gunSkinName:
         myPlayer?.gunSkinName ?? room.players[0]?.gunSkinName ?? "Default",
     };
-    // Second player config from the other player (if any)
     const otherPlayer = room.players.find(
       (p) => p.principal.toString() !== myPrincipal,
     );
@@ -137,6 +140,7 @@ export default function App() {
       )}
       {view === "online-lobby" && (
         <OnlineLobby
+          isAdmin={isAdmin}
           onStartOnlineGame={handleStartOnlineGame}
           onBack={() => setView("landing")}
         />
@@ -144,7 +148,7 @@ export default function App() {
       {view === "online-game" && p1Config && p2Config && (
         <div className="relative">
           <div
-            className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center py-2 text-xs font-black tracking-widest"
+            className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center py-2 text-xs font-black tracking-widest gap-3"
             style={{
               background: "rgba(45,140,255,0.9)",
               color: "#fff",
@@ -152,6 +156,14 @@ export default function App() {
             }}
           >
             🌐 ONLINE MATCH — ROOM {currentRoom?.code} — {onlineDisplayName}
+            {isAdmin && (
+              <span
+                className="px-2 py-0.5 rounded text-xs font-black"
+                style={{ background: "#FFD700", color: "#000" }}
+              >
+                👑 OWNER
+              </span>
+            )}
           </div>
           <div className="pt-8">
             <GameScreen

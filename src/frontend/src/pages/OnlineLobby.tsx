@@ -32,15 +32,16 @@ import { useEffect, useRef, useState } from "react";
 import type {
   Character,
   ChatMessage,
+  GameMap,
   GunSkin,
   Room,
   Vehicle,
 } from "../backend.d";
-import type { backendInterface as ExtendedBackend } from "../backend.d";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 
 interface Props {
+  isAdmin?: boolean;
   onStartOnlineGame: (room: Room, displayName: string) => void;
   onBack: () => void;
 }
@@ -62,9 +63,12 @@ function getPlayerColor(index: number) {
   return PLAYER_COLORS[index % PLAYER_COLORS.length];
 }
 
-export default function OnlineLobby({ onStartOnlineGame, onBack }: Props) {
-  const { actor: _actor } = useActor();
-  const actor = _actor as ExtendedBackend | null;
+export default function OnlineLobby({
+  isAdmin = false,
+  onStartOnlineGame,
+  onBack,
+}: Props) {
+  const { actor } = useActor();
   const { identity } = useInternetIdentity();
   const myPrincipal = identity?.getPrincipal().toString();
 
@@ -85,6 +89,13 @@ export default function OnlineLobby({ onStartOnlineGame, onBack }: Props) {
   const [selChar, setSelChar] = useState("");
   const [selVehicle, setSelVehicle] = useState("");
   const [selGun, setSelGun] = useState("");
+  const [maps, setMaps] = useState<string[]>([
+    "Jungle",
+    "City",
+    "Castle",
+    "Space Station",
+    "Seas",
+  ]);
   const [readyLoading, setReadyLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -97,10 +108,13 @@ export default function OnlineLobby({ onStartOnlineGame, onBack }: Props) {
       actor.getAllCharacters(),
       actor.getAllVehicles(),
       actor.getAllGunSkins(),
-    ]).then(([chars, vehs, guns]) => {
+      actor.getAllMaps(),
+    ]).then(([chars, vehs, guns, gameMaps]) => {
       setCharacters(chars);
       setVehicles(vehs);
       setGunSkins(guns);
+      const mapList = (gameMaps as GameMap[]).map((m) => m.name);
+      if (mapList.length > 0) setMaps(mapList);
       if (chars.length > 0) setSelChar(chars[0].name);
       if (vehs.length > 0) setSelVehicle(vehs[0].name);
       if (guns.length > 0) setSelGun(guns[0].name);
@@ -118,7 +132,7 @@ export default function OnlineLobby({ onStartOnlineGame, onBack }: Props) {
         ]);
         if (updatedRoom) {
           setRoom(updatedRoom);
-          if (updatedRoom.status.__kind__ === "playing") {
+          if (updatedRoom.status === "playing") {
             clearInterval(pollRef.current!);
             onStartOnlineGame(updatedRoom, displayName);
           }
@@ -523,15 +537,14 @@ export default function OnlineLobby({ onStartOnlineGame, onBack }: Props) {
           <Badge
             style={{
               background:
-                room?.status.__kind__ === "waiting"
+                room?.status === "waiting"
                   ? "rgba(45,140,255,0.15)"
                   : "rgba(45,255,140,0.15)",
-              color:
-                room?.status.__kind__ === "waiting" ? "#2D8CFF" : "#2DFF8C",
-              border: `1px solid ${room?.status.__kind__ === "waiting" ? "#2D8CFF" : "#2DFF8C"}`,
+              color: room?.status === "waiting" ? "#2D8CFF" : "#2DFF8C",
+              border: `1px solid ${room?.status === "waiting" ? "#2D8CFF" : "#2DFF8C"}`,
             }}
           >
-            {room?.status.__kind__ === "waiting" ? "⏳ Waiting" : "▶ Playing"}
+            {room?.status === "waiting" ? "⏳ Waiting" : "▶ Playing"}
           </Badge>
         </div>
 
@@ -610,6 +623,19 @@ export default function OnlineLobby({ onStartOnlineGame, onBack }: Props) {
                               YOU
                             </Badge>
                           )}
+                          {player.principal.toString() === myPrincipal &&
+                            isAdmin && (
+                              <Badge
+                                className="text-xs px-1 py-0"
+                                style={{
+                                  background: "rgba(255,215,0,0.2)",
+                                  color: "#FFD700",
+                                  border: "1px solid #FFD700",
+                                }}
+                              >
+                                👑 OWNER
+                              </Badge>
+                            )}
                         </div>
                         {player.isReady && (
                           <div className="text-xs" style={{ color: "#7a8fa8" }}>
@@ -690,17 +716,15 @@ export default function OnlineLobby({ onStartOnlineGame, onBack }: Props) {
                         border: "1px solid #243249",
                       }}
                     >
-                      {["Jungle", "City", "Castle", "Space Station"].map(
-                        (m) => (
-                          <SelectItem
-                            key={m}
-                            value={m}
-                            style={{ color: "#F2F6FF" }}
-                          >
-                            {m}
-                          </SelectItem>
-                        ),
-                      )}
+                      {maps.map((m) => (
+                        <SelectItem
+                          key={m}
+                          value={m}
+                          style={{ color: "#F2F6FF" }}
+                        >
+                          {m}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Button

@@ -31,6 +31,10 @@ const VEHICLE_STATS: Record<
   plane: { speed: 5.5, health: 70, canFly: true },
   ship: { speed: 2, health: 160, canFly: false },
   battle: { speed: 3, health: 180, canFly: false },
+  submarine: { speed: 1.5, health: 200, canFly: false },
+  speedboat: { speed: 7, health: 80, canFly: false },
+  warship: { speed: 1, health: 250, canFly: false },
+  yacht: { speed: 3, health: 120, canFly: false },
 };
 
 const VEHICLE_EMOJI: Record<string, string> = {
@@ -41,9 +45,25 @@ const VEHICLE_EMOJI: Record<string, string> = {
   plane: "✈️",
   ship: "🚢",
   battle: "⚔️",
+  submarine: "🚤",
+  speedboat: "🛥️",
+  warship: "🚢",
+  yacht: "⛵",
 };
 
-const ALL_VEHICLES = ["car", "van", "bike", "tank", "plane", "ship", "battle"];
+const ALL_VEHICLES = [
+  "car",
+  "van",
+  "bike",
+  "tank",
+  "plane",
+  "ship",
+  "battle",
+  "submarine",
+  "speedboat",
+  "warship",
+  "yacht",
+];
 
 interface Player {
   x: number;
@@ -162,6 +182,39 @@ function drawMap(ctx: CanvasRenderingContext2D, mapName: string) {
     // Towers
     ctx.fillRect(0, 100, 100, 300);
     ctx.fillRect(700, 100, 100, 300);
+  } else if (mapName === "Seas") {
+    // Ocean gradient
+    const seaBg = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    seaBg.addColorStop(0, "#001a2e");
+    seaBg.addColorStop(0.5, "#002a44");
+    seaBg.addColorStop(1, "#004466");
+    ctx.fillStyle = seaBg;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    // Waves
+    ctx.strokeStyle = "rgba(0,200,255,0.25)";
+    ctx.lineWidth = 2;
+    for (let wy = 80; wy < CANVAS_H - 60; wy += 60) {
+      ctx.beginPath();
+      for (let wx = 0; wx < CANVAS_W; wx += 4) {
+        const waveY = wy + Math.sin(wx * 0.05) * 8;
+        if (wx === 0) ctx.moveTo(wx, waveY);
+        else ctx.lineTo(wx, waveY);
+      }
+      ctx.stroke();
+    }
+    // Bubbles
+    ctx.fillStyle = "rgba(100,220,255,0.15)";
+    for (let b = 0; b < 20; b++) {
+      ctx.beginPath();
+      ctx.arc(
+        (b * 173) % CANVAS_W,
+        100 + ((b * 83) % (CANVAS_H - 200)),
+        4 + (b % 6),
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
   } else {
     // Space Station
     ctx.fillStyle = "#020210";
@@ -189,6 +242,7 @@ function drawMap(ctx: CanvasRenderingContext2D, mapName: string) {
     City: "#2a2a3e",
     Castle: "#3a2a4e",
     "Space Station": "#0a0a2e",
+    Seas: "#003355",
   };
   ctx.fillStyle = groundColors[mapName] ?? "#1a1a3e";
   ctx.fillRect(0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
@@ -575,7 +629,15 @@ export default function GameScreen({
           </div>
 
           {/* Center */}
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center gap-1">
+            {isAdmin && (
+              <span
+                className="text-xs font-black px-2 py-0.5 rounded"
+                style={{ background: "#FFD700", color: "#000" }}
+              >
+                👑 OWNER
+              </span>
+            )}
             {isAdmin && (
               <span className="text-xs font-black" style={{ color: "#FFD700" }}>
                 💰 {coins}

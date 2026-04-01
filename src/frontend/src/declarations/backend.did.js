@@ -56,6 +56,53 @@ export const UserProfile = IDL.Record({
   'favoriteVehicle' : IDL.Text,
   'favoriteCharacter' : IDL.Text,
 });
+export const GodModeFlags = IDL.Record({
+  'flyMode' : IDL.Bool,
+  'extraCoins' : IDL.Nat,
+  'invincibility' : IDL.Bool,
+});
+export const PlayerSession = IDL.Record({
+  'status' : IDL.Variant({ 'alive' : IDL.Null, 'dead' : IDL.Null }),
+  'vehicleName' : IDL.Text,
+  'principal' : IDL.Principal,
+  'displayName' : IDL.Text,
+  'characterName' : IDL.Text,
+  'coins' : IDL.Nat,
+  'score' : IDL.Nat,
+  'isReady' : IDL.Bool,
+  'positionX' : IDL.Int,
+  'positionY' : IDL.Int,
+  'gunSkinName' : IDL.Text,
+  'health' : IDL.Nat,
+});
+export const RoomStatus = IDL.Variant({
+  'playing' : IDL.Null,
+  'finished' : IDL.Null,
+  'waiting' : IDL.Null,
+});
+export const RoomPlayer = IDL.Record({
+  'vehicleName' : IDL.Text,
+  'principal' : IDL.Principal,
+  'displayName' : IDL.Text,
+  'characterName' : IDL.Text,
+  'isReady' : IDL.Bool,
+  'gunSkinName' : IDL.Text,
+});
+export const Room = IDL.Record({
+  'id' : IDL.Nat,
+  'status' : RoomStatus,
+  'selectedMap' : IDL.Text,
+  'code' : IDL.Text,
+  'createdAt' : Time,
+  'players' : IDL.Vec(RoomPlayer),
+  'hostPrincipal' : IDL.Principal,
+});
+export const ChatMessage = IDL.Record({
+  'displayName' : IDL.Text,
+  'senderPrincipal' : IDL.Principal,
+  'message' : IDL.Text,
+  'timestamp' : Time,
+});
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -64,10 +111,14 @@ export const idlService = IDL.Service({
   'addGunSkin' : IDL.Func([GunSkin], [IDL.Nat], []),
   'addVehicle' : IDL.Func([Vehicle], [IDL.Nat], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'banPlayer' : IDL.Func([IDL.Principal], [], []),
+  'checkIfBanned' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
+  'createRoom' : IDL.Func([IDL.Text], [IDL.Text], []),
   'deleteCharacter' : IDL.Func([IDL.Nat], [], []),
   'deleteGameMap' : IDL.Func([IDL.Nat], [], []),
   'deleteGunSkin' : IDL.Func([IDL.Nat], [], []),
   'deleteVehicle' : IDL.Func([IDL.Nat], [], []),
+  'endMatch' : IDL.Func([IDL.Text], [], []),
   'getAllCharacters' : IDL.Func([], [IDL.Vec(Character)], ['query']),
   'getAllGunSkins' : IDL.Func([], [IDL.Vec(GunSkin)], ['query']),
   'getAllMaps' : IDL.Func([], [IDL.Vec(GameMap)], ['query']),
@@ -75,22 +126,43 @@ export const idlService = IDL.Service({
   'getAllVehicles' : IDL.Func([], [IDL.Vec(Vehicle)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getGodMode' : IDL.Func([IDL.Principal], [IDL.Opt(GodModeFlags)], ['query']),
+  'getPlayerSession' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Opt(PlayerSession)],
+      ['query'],
+    ),
+  'getRoomByCode' : IDL.Func([IDL.Text], [IDL.Opt(Room)], ['query']),
+  'getRoomMessages' : IDL.Func([IDL.Text], [IDL.Vec(ChatMessage)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'joinRandomRoom' : IDL.Func([IDL.Text], [IDL.Text], []),
+  'joinRoom' : IDL.Func([IDL.Text, IDL.Text], [Room], []),
+  'leaveRoom' : IDL.Func([IDL.Text], [], []),
+  'listBannedPlayers' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+  'listOpenRooms' : IDL.Func([], [IDL.Vec(Room)], ['query']),
+  'removeGodMode' : IDL.Func([IDL.Principal], [], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'seedInitialData' : IDL.Func([], [], []),
+  'sendChatMessage' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
+  'setGodMode' : IDL.Func([IDL.Principal, GodModeFlags], [], []),
+  'setPlayerReady' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Text], [], []),
+  'setRoomMap' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'startMatch' : IDL.Func([IDL.Text], [], []),
   'submitMatchResult' : IDL.Func(
       [IDL.Principal, IDL.Text, IDL.Text, IDL.Text],
       [IDL.Nat],
       [],
     ),
+  'unbanPlayer' : IDL.Func([IDL.Principal], [], []),
   'updateCharacter' : IDL.Func([IDL.Nat, Character], [], []),
   'updateGameMap' : IDL.Func([IDL.Nat, GameMap], [], []),
   'updateGunSkin' : IDL.Func([IDL.Nat, GunSkin], [], []),
+  'updatePlayerSession' : IDL.Func([PlayerSession], [], []),
   'updateVehicle' : IDL.Func([IDL.Nat, Vehicle], [], []),
 });
 
@@ -145,6 +217,53 @@ export const idlFactory = ({ IDL }) => {
     'favoriteVehicle' : IDL.Text,
     'favoriteCharacter' : IDL.Text,
   });
+  const GodModeFlags = IDL.Record({
+    'flyMode' : IDL.Bool,
+    'extraCoins' : IDL.Nat,
+    'invincibility' : IDL.Bool,
+  });
+  const PlayerSession = IDL.Record({
+    'status' : IDL.Variant({ 'alive' : IDL.Null, 'dead' : IDL.Null }),
+    'vehicleName' : IDL.Text,
+    'principal' : IDL.Principal,
+    'displayName' : IDL.Text,
+    'characterName' : IDL.Text,
+    'coins' : IDL.Nat,
+    'score' : IDL.Nat,
+    'isReady' : IDL.Bool,
+    'positionX' : IDL.Int,
+    'positionY' : IDL.Int,
+    'gunSkinName' : IDL.Text,
+    'health' : IDL.Nat,
+  });
+  const RoomStatus = IDL.Variant({
+    'playing' : IDL.Null,
+    'finished' : IDL.Null,
+    'waiting' : IDL.Null,
+  });
+  const RoomPlayer = IDL.Record({
+    'vehicleName' : IDL.Text,
+    'principal' : IDL.Principal,
+    'displayName' : IDL.Text,
+    'characterName' : IDL.Text,
+    'isReady' : IDL.Bool,
+    'gunSkinName' : IDL.Text,
+  });
+  const Room = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : RoomStatus,
+    'selectedMap' : IDL.Text,
+    'code' : IDL.Text,
+    'createdAt' : Time,
+    'players' : IDL.Vec(RoomPlayer),
+    'hostPrincipal' : IDL.Principal,
+  });
+  const ChatMessage = IDL.Record({
+    'displayName' : IDL.Text,
+    'senderPrincipal' : IDL.Principal,
+    'message' : IDL.Text,
+    'timestamp' : Time,
+  });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -153,10 +272,14 @@ export const idlFactory = ({ IDL }) => {
     'addGunSkin' : IDL.Func([GunSkin], [IDL.Nat], []),
     'addVehicle' : IDL.Func([Vehicle], [IDL.Nat], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'banPlayer' : IDL.Func([IDL.Principal], [], []),
+    'checkIfBanned' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
+    'createRoom' : IDL.Func([IDL.Text], [IDL.Text], []),
     'deleteCharacter' : IDL.Func([IDL.Nat], [], []),
     'deleteGameMap' : IDL.Func([IDL.Nat], [], []),
     'deleteGunSkin' : IDL.Func([IDL.Nat], [], []),
     'deleteVehicle' : IDL.Func([IDL.Nat], [], []),
+    'endMatch' : IDL.Func([IDL.Text], [], []),
     'getAllCharacters' : IDL.Func([], [IDL.Vec(Character)], ['query']),
     'getAllGunSkins' : IDL.Func([], [IDL.Vec(GunSkin)], ['query']),
     'getAllMaps' : IDL.Func([], [IDL.Vec(GameMap)], ['query']),
@@ -164,22 +287,51 @@ export const idlFactory = ({ IDL }) => {
     'getAllVehicles' : IDL.Func([], [IDL.Vec(Vehicle)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getGodMode' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(GodModeFlags)],
+        ['query'],
+      ),
+    'getPlayerSession' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(PlayerSession)],
+        ['query'],
+      ),
+    'getRoomByCode' : IDL.Func([IDL.Text], [IDL.Opt(Room)], ['query']),
+    'getRoomMessages' : IDL.Func([IDL.Text], [IDL.Vec(ChatMessage)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'joinRandomRoom' : IDL.Func([IDL.Text], [IDL.Text], []),
+    'joinRoom' : IDL.Func([IDL.Text, IDL.Text], [Room], []),
+    'leaveRoom' : IDL.Func([IDL.Text], [], []),
+    'listBannedPlayers' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'listOpenRooms' : IDL.Func([], [IDL.Vec(Room)], ['query']),
+    'removeGodMode' : IDL.Func([IDL.Principal], [], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'seedInitialData' : IDL.Func([], [], []),
+    'sendChatMessage' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
+    'setGodMode' : IDL.Func([IDL.Principal, GodModeFlags], [], []),
+    'setPlayerReady' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [],
+        [],
+      ),
+    'setRoomMap' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'startMatch' : IDL.Func([IDL.Text], [], []),
     'submitMatchResult' : IDL.Func(
         [IDL.Principal, IDL.Text, IDL.Text, IDL.Text],
         [IDL.Nat],
         [],
       ),
+    'unbanPlayer' : IDL.Func([IDL.Principal], [], []),
     'updateCharacter' : IDL.Func([IDL.Nat, Character], [], []),
     'updateGameMap' : IDL.Func([IDL.Nat, GameMap], [], []),
     'updateGunSkin' : IDL.Func([IDL.Nat, GunSkin], [], []),
+    'updatePlayerSession' : IDL.Func([PlayerSession], [], []),
     'updateVehicle' : IDL.Func([IDL.Nat, Vehicle], [], []),
   });
 };

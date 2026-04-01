@@ -17,7 +17,18 @@ export interface Character {
   'strength' : bigint,
   'agility' : bigint,
 }
+export interface ChatMessage {
+  'displayName' : string,
+  'senderPrincipal' : Principal,
+  'message' : string,
+  'timestamp' : Time,
+}
 export interface GameMap { 'theme' : string, 'name' : string }
+export interface GodModeFlags {
+  'flyMode' : boolean,
+  'extraCoins' : bigint,
+  'invincibility' : boolean,
+}
 export interface GunSkin {
   'name' : string,
   'description' : string,
@@ -31,6 +42,41 @@ export interface MatchResult {
   'loser' : Principal,
   'timestamp' : Time,
 }
+export interface PlayerSession {
+  'status' : { 'alive' : null } |
+    { 'dead' : null },
+  'vehicleName' : string,
+  'principal' : Principal,
+  'displayName' : string,
+  'characterName' : string,
+  'coins' : bigint,
+  'score' : bigint,
+  'isReady' : boolean,
+  'positionX' : bigint,
+  'positionY' : bigint,
+  'gunSkinName' : string,
+  'health' : bigint,
+}
+export interface Room {
+  'id' : bigint,
+  'status' : RoomStatus,
+  'selectedMap' : string,
+  'code' : string,
+  'createdAt' : Time,
+  'players' : Array<RoomPlayer>,
+  'hostPrincipal' : Principal,
+}
+export interface RoomPlayer {
+  'vehicleName' : string,
+  'principal' : Principal,
+  'displayName' : string,
+  'characterName' : string,
+  'isReady' : boolean,
+  'gunSkinName' : string,
+}
+export type RoomStatus = { 'playing' : null } |
+  { 'finished' : null } |
+  { 'waiting' : null };
 export type Time = bigint;
 export interface UserProfile {
   'name' : string,
@@ -61,10 +107,14 @@ export interface _SERVICE {
   'addGunSkin' : ActorMethod<[GunSkin], bigint>,
   'addVehicle' : ActorMethod<[Vehicle], bigint>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'banPlayer' : ActorMethod<[Principal], undefined>,
+  'checkIfBanned' : ActorMethod<[Principal], boolean>,
+  'createRoom' : ActorMethod<[string], string>,
   'deleteCharacter' : ActorMethod<[bigint], undefined>,
   'deleteGameMap' : ActorMethod<[bigint], undefined>,
   'deleteGunSkin' : ActorMethod<[bigint], undefined>,
   'deleteVehicle' : ActorMethod<[bigint], undefined>,
+  'endMatch' : ActorMethod<[string], undefined>,
   'getAllCharacters' : ActorMethod<[], Array<Character>>,
   'getAllGunSkins' : ActorMethod<[], Array<GunSkin>>,
   'getAllMaps' : ActorMethod<[], Array<GameMap>>,
@@ -72,17 +122,34 @@ export interface _SERVICE {
   'getAllVehicles' : ActorMethod<[], Array<Vehicle>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getGodMode' : ActorMethod<[Principal], [] | [GodModeFlags]>,
+  'getPlayerSession' : ActorMethod<[Principal], [] | [PlayerSession]>,
+  'getRoomByCode' : ActorMethod<[string], [] | [Room]>,
+  'getRoomMessages' : ActorMethod<[string], Array<ChatMessage>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'joinRandomRoom' : ActorMethod<[string], string>,
+  'joinRoom' : ActorMethod<[string, string], Room>,
+  'leaveRoom' : ActorMethod<[string], undefined>,
+  'listBannedPlayers' : ActorMethod<[], Array<Principal>>,
+  'listOpenRooms' : ActorMethod<[], Array<Room>>,
+  'removeGodMode' : ActorMethod<[Principal], undefined>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'seedInitialData' : ActorMethod<[], undefined>,
+  'sendChatMessage' : ActorMethod<[string, string, string], undefined>,
+  'setGodMode' : ActorMethod<[Principal, GodModeFlags], undefined>,
+  'setPlayerReady' : ActorMethod<[string, string, string, string], undefined>,
+  'setRoomMap' : ActorMethod<[string, string], undefined>,
+  'startMatch' : ActorMethod<[string], undefined>,
   'submitMatchResult' : ActorMethod<
     [Principal, string, string, string],
     bigint
   >,
+  'unbanPlayer' : ActorMethod<[Principal], undefined>,
   'updateCharacter' : ActorMethod<[bigint, Character], undefined>,
   'updateGameMap' : ActorMethod<[bigint, GameMap], undefined>,
   'updateGunSkin' : ActorMethod<[bigint, GunSkin], undefined>,
+  'updatePlayerSession' : ActorMethod<[PlayerSession], undefined>,
   'updateVehicle' : ActorMethod<[bigint, Vehicle], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
